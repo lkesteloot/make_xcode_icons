@@ -1,0 +1,104 @@
+#!/usr/bin/python
+
+# Generates the various icons required by Xcode. Uses Xcode's JSON file to determine
+# what sizes are needed.
+
+import sys
+import os
+import argparse
+import json
+from PIL import Image
+
+# source_image is a PNG file in some large size.
+# icon_dir is the directory within the Images.xcassets directory.
+# default_size is the @1 size when it's not specified in the JSON file.
+#
+# Returns whether successful.
+def make_icon(source_image_pathname, icon_dir, default_size=None):
+    # Load the JSON file.
+    json_pathname = os.path.join(icon_dir, "Contents.json")
+    if not os.path.exists(json_pathname):
+        sys.stderr.write("Can't find JSON file \"%s\" in icon directory." % (json_pathname,))
+        return False
+
+    doc = json.load(open(json_pathname))
+
+    # Load the source image.
+    source_image = Image.open(source_image_pathname)
+
+    # Palette images can't be resized nicely by PIL, so force them to be RGBA.
+    if source_image.mode == "P":
+        source_image = source_image.convert('RGBA')
+
+    # Pick a good prefix for our generated files.
+    prefix = "Icon" if icon_dir.endswith("iconset") else "Image"
+
+    for image in doc["images"]:
+        # Figure out the size of the icon.
+        if "size" in image:
+            size = float(image["size"].split("x")[0])
+        else:
+            if default_size is None:
+                sys.stderr.write("Some icon types in \"%s\" don't specify a size. You must supply one on the command line with --default_size." % (json_pathname,))
+                return False
+
+            size = default_size
+
+        # Scale by the resolution multiplier.
+        scale = image["scale"]
+        if scale == "1x":
+            # All good.
+            pass
+        elif scale == "2x":
+            size *= 2
+        elif scale == "3x":
+            size *= 3
+        else:
+            sys.stderr.write("Scale \"%s\" is not handled." % (scale,))
+            return False
+
+        size = int(size)
+
+        # Delete existing file.
+        image_filename = image.get("filename")
+        if image_filename is not None:
+            image_pathname = os.path.join(icon_dir, image_filename)
+            if os.path.exists(image_pathname):
+                os.remove(image_pathname)
+
+        # Make our new pathname.
+        image_filename = "%s_%dx%d.png" % (prefix, size, size)
+        image_pathname = icon_dir + "/" + image_filename
+        image["filename"] = image_filename
+
+        print "Generating " + image_filename
+
+        # Resize and save the image.
+        resized_image = source_image.resize((size,size), Image.ANTIALIAS)
+        resized_image.save(image_pathname)
+
+    # Write the JSON file back out with our filenames.
+    print "Saving " + json_pathname
+    fp = open(json_pathname, "w")
+    json_separators=(',', ' : ') # Avoid trailing whitespace, git complains.
+    json.dump(doc, fp, sort_keys=True, indent=2, separators=json_separators)
+    fp.close()
+
+    return True
+
+def main():
+    parser = argparse.ArgumentParser(description="Generates icons for Xcode-developed programs.")
+    parser.add_argument("source_image",
+            help="source image, which should be large (e.g., 1024x1024)")
+    parser.add_argument("icon_dir",
+            help="directory where the Xcode icons are kept")
+    parser.add_argument("--default_size", metavar="PIXELS", type=int,
+            help="size of icon if it's not specified in Contents.json")
+
+    args = parser.parse_args()
+
+    success = make_icon(args.source_image, args.icon_dir, args.default_size)
+    sys.exit(0 if success else 1)
+
+main()
+
