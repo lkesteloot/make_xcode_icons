@@ -9,7 +9,7 @@ import argparse
 import json
 from PIL import Image
 
-# source_image is a PNG file in some large size.
+# source_image is a PNG file in some large size (e.g., 1024x1024).
 # icon_dir is the directory within the Images.xcassets directory.
 # default_size is the @1 size when it's not specified in the JSON file.
 #
